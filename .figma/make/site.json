@@ -1,1 +1,10 @@
-{}
+{
+  "description": "Streamline affiliate management with comprehensive dashboards for admins and influencers, enabling performance tracking, commission management, and content generation.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
