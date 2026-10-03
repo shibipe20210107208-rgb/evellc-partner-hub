@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { appApi, AppData, AppProfile, EntityRecord, supabase } from "./lib/supabase";
+import { demoProfile, getDemoData, saveDemoData } from "./lib/demo";
 
 type IconName =
   | "dashboard"
@@ -282,7 +283,7 @@ function downloadCsv(filename: string, rows: EntityRecord[], columns: string[]) 
   URL.revokeObjectURL(url);
 }
 
-function AuthScreen() {
+function AuthScreen({ onDemo }: { onDemo: () => void }) {
   const [mode, setMode] = useState<"login" | "signup" | "reset">("login");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -314,7 +315,7 @@ function AuthScreen() {
     }
   }
 
-  return <div className="auth-screen"><div className="auth-brand"><Logo /><div><span className="eyebrow">EVELLC PARTNER NETWORK</span><h1>Build influence.<br/>Grow together.</h1><p>One secure workspace for products, content, referrals, commissions, and team growth.</p><div className="auth-proof"><span><Icon name="check"/></span><div><strong>Global partner ecosystem</strong><small>Commerce tools across every EveLLC marketplace.</small></div></div></div></div><form className="auth-card" onSubmit={submit}><span className="eyebrow">{mode === "signup" ? "JOIN THE NETWORK" : mode === "reset" ? "ACCOUNT RECOVERY" : "WELCOME BACK"}</span><h2>{mode === "signup" ? "Create your account" : mode === "reset" ? "Reset your password" : "Sign in to Partner Hub"}</h2><p>{mode === "signup" ? "The first registered account becomes platform owner." : "Use your verified EveLLC partner credentials."}</p>{mode === "signup" && <label>Full name<input name="name" required autoComplete="name"/></label>}<label>Email address<input name="email" type="email" required autoComplete="email"/></label>{mode !== "reset" && <label>Password<input name="password" type="password" minLength={8} required autoComplete={mode === "signup" ? "new-password" : "current-password"}/></label>}{message && <div className="auth-message">{message}</div>}<Button type="submit">{loading ? "Please wait…" : mode === "signup" ? "Create account" : mode === "reset" ? "Send reset link" : "Sign in"}</Button><div className="auth-links">{mode === "login" && <button type="button" onClick={() => setMode("reset")}>Forgot password?</button>}<button type="button" onClick={() => setMode(mode === "signup" ? "login" : "signup")}>{mode === "signup" ? "Already registered? Sign in" : "New partner? Create account"}</button></div></form></div>;
+  return <div className="auth-screen"><div className="auth-brand"><Logo /><div><span className="eyebrow">EVELLC PARTNER NETWORK</span><h1>Build influence.<br/>Grow together.</h1><p>One secure workspace for products, content, referrals, commissions, and team growth.</p><div className="auth-proof"><span><Icon name="check"/></span><div><strong>Global partner ecosystem</strong><small>Commerce tools across every EveLLC marketplace.</small></div></div></div></div><form className="auth-card" onSubmit={submit}><span className="eyebrow">{mode === "signup" ? "JOIN THE NETWORK" : mode === "reset" ? "ACCOUNT RECOVERY" : "WELCOME BACK"}</span><h2>{mode === "signup" ? "Create your account" : mode === "reset" ? "Reset your password" : "Sign in to Partner Hub"}</h2><p>{mode === "signup" ? "The first registered account becomes platform owner." : "Use your verified EveLLC partner credentials."}</p>{mode === "signup" && <label>Full name<input name="name" required autoComplete="name"/></label>}<label>Email address<input name="email" type="email" required autoComplete="email"/></label>{mode !== "reset" && <label>Password<input name="password" type="password" minLength={8} required autoComplete={mode === "signup" ? "new-password" : "current-password"}/></label>}{message && <div className="auth-message">{message}</div>}<Button type="submit">{loading ? "Please wait…" : mode === "signup" ? "Create account" : mode === "reset" ? "Send reset link" : "Sign in"}</Button><div className="auth-links">{mode === "login" && <button type="button" onClick={() => setMode("reset")}>Forgot password?</button>}<button type="button" onClick={() => setMode(mode === "signup" ? "login" : "signup")}>{mode === "signup" ? "Already registered? Sign in" : "New partner? Create account"}</button></div><div className="auth-divider"><span>or</span></div><Button variant="secondary" onClick={onDemo}>Continue in demo workspace</Button><small className="demo-note">No account required. Changes stay in this browser.</small></form></div>;
 }
 
 function RecordModal({ config, record, onClose, onSave }: { config: PageConfig; record: EntityRecord | null; onClose: () => void; onSave: (values: Record<string, unknown>) => Promise<void> }) {
@@ -334,7 +335,7 @@ function RecordModal({ config, record, onClose, onSave }: { config: PageConfig; 
   return <div className="modal-backdrop" role="presentation" onMouseDown={onClose}><div className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" onMouseDown={(event) => event.stopPropagation()}><div className="modal-header"><div><span className="eyebrow">{record ? "EDIT RECORD" : "NEW RECORD"}</span><h2 id="modal-title">{record ? `Edit ${record.name}` : config.action}</h2></div><button className="icon-button" onClick={onClose}><Icon name="close"/></button></div><form onSubmit={submit}><div className="modal-fields">{config.fields.map((field) => <label key={field.key}>{field.label}{field.type === "select" ? <select name={field.key} defaultValue={String(record?.[field.key] ?? field.options?.[0] ?? "")}>{field.options?.map((option) => <option key={option}>{option}</option>)}</select> : <input name={field.key} type={field.type || "text"} step={field.type === "number" ? "0.01" : undefined} defaultValue={String(record?.[field.key] ?? "")} required={["name", "email", "url"].includes(field.key)}/>}</label>)}</div>{error && <div className="auth-message">{error}</div>}<div className="modal-actions"><Button variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit">{saving ? "Saving…" : "Save record"}</Button></div></form></div></div>;
 }
 
-function FunctionalDataPage({ page, data, role, onRefresh, onToast }: { page: string; data: AppData; role: "admin" | "affiliate"; onRefresh: () => Promise<void>; onToast: (message: string) => void }) {
+function FunctionalDataPage({ page, data, role, onRefresh, onToast, onCreate, onUpdate, onRemove }: { page: string; data: AppData; role: "admin" | "affiliate"; onRefresh: () => Promise<void>; onToast: (message: string) => void; onCreate: (type: string, values: Record<string, unknown>) => Promise<void>; onUpdate: (type: string, id: string, values: Record<string, unknown>) => Promise<void>; onRemove: (type: string, id: string) => Promise<void> }) {
   const config = pageConfigs[page];
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("All");
@@ -347,8 +348,8 @@ function FunctionalDataPage({ page, data, role, onRefresh, onToast }: { page: st
   const canPromote = role === "affiliate" && config.type === "products";
 
   async function save(values: Record<string, unknown>) {
-    if (editing) await appApi.update(config.type, editing.id, values);
-    else await appApi.create(config.type, values);
+    if (editing) await onUpdate(config.type, editing.id, values);
+    else await onCreate(config.type, values);
     setEditing(undefined);
     await onRefresh();
     onToast(editing ? "Record updated successfully" : "Record created successfully");
@@ -356,14 +357,14 @@ function FunctionalDataPage({ page, data, role, onRefresh, onToast }: { page: st
 
   async function remove(record: EntityRecord) {
     if (!window.confirm(`Delete “${record.name}”? This action cannot be undone.`)) return;
-    await appApi.remove(config.type, record.id);
+    await onRemove(config.type, record.id);
     await onRefresh();
     onToast("Record deleted");
   }
 
   async function promote(record: EntityRecord) {
     const slug = record.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-    await appApi.create("links", { name: record.name, url: `https://evellc.shop/products/${slug}?ref=${crypto.randomUUID().slice(0, 8)}`, clicks: 0, conversions: 0, status: "Active" });
+    await onCreate("links", { name: record.name, url: `https://evellc.shop/products/${slug}?ref=${crypto.randomUUID().slice(0, 8)}`, clicks: 0, conversions: 0, status: "Active" });
     await onRefresh();
     onToast("Product added to your promotional links");
   }
@@ -371,15 +372,15 @@ function FunctionalDataPage({ page, data, role, onRefresh, onToast }: { page: st
   return <><div className="section-title-row"><div><h2>{config.title}</h2><p>{config.description}</p></div><div className="section-actions"><Button variant="secondary" icon="download" onClick={() => { downloadCsv(`${config.type}.csv`, filtered, config.columns); onToast("CSV exported"); }}>Export</Button>{canManage && <Button icon="plus" onClick={() => setEditing(null)}>{config.action}</Button>}</div></div><div className="section-stats"><div><span>Total records</span><strong>{rows.length.toLocaleString()}</strong><small>Synced with Supabase</small></div><div><span>Active / completed</span><strong>{rows.filter((row) => ["Active", "Completed", "Ready", "Approved", "Paid"].includes(String(row.status))).length}</strong><small>Current live records</small></div><div><span>Needs attention</span><strong>{rows.filter((row) => ["Pending", "Review", "Processing", "Failed"].includes(String(row.status))).length}</strong><small>Review recommended</small></div></div><article className="panel table-panel"><div className="table-toolbar"><div className="search small"><Icon name="search" size={16}/><input aria-label="Search records" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${config.title.toLowerCase()}...`}/></div><div className="filters"><select aria-label="Filter status" value={status} onChange={(event) => setStatus(event.target.value)}>{statuses.map((item) => <option key={item}>{item}</option>)}</select><select aria-label="Sort records" value={sort} onChange={(event) => setSort(event.target.value)}><option>Newest</option><option>A–Z</option></select></div></div><div className="table-scroll"><table><thead><tr>{config.columns.map((column) => <th key={column}>{column.replace(/([A-Z])/g, " $1")}</th>)}{(canManage || canPromote) && <th>Actions</th>}</tr></thead><tbody>{filtered.map((row) => <tr key={row.id}>{config.columns.map((column, index) => <td key={column}>{index === 0 ? <div className="person"><span className="avatar purple">{initials(formatValue(column, row[column]))}</span><strong>{formatValue(column, row[column])}</strong></div> : column === "status" ? <span className={`status ${String(row[column]).toLowerCase()}`}>{formatValue(column, row[column])}</span> : formatValue(column, row[column])}</td>)}{canManage && <td><div className="row-actions"><button onClick={() => setEditing(row)}>Edit</button><button className="danger-action" onClick={() => remove(row)}>Delete</button></div></td>}{canPromote && <td><div className="row-actions"><button onClick={() => promote(row)}>Promote</button></div></td>}</tr>)}{filtered.length === 0 && <tr><td colSpan={config.columns.length + 1}><div className="empty-row">No matching records found.</div></td></tr>}</tbody></table></div></article>{editing !== undefined && <RecordModal config={config} record={editing} onClose={() => setEditing(undefined)} onSave={save}/>}</>;
 }
 
-function SettingsPage({ profile, onProfile, onToast }: { profile: AppProfile; onProfile: (profile: AppProfile) => void; onToast: (message: string) => void }) {
+function SettingsPage({ profile, onProfile, onToast, onSave }: { profile: AppProfile; onProfile: (profile: AppProfile) => void; onToast: (message: string) => void; onSave: (values: Record<string, unknown>) => Promise<AppProfile> }) {
   const [saving, setSaving] = useState(false);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
     const values = new FormData(event.currentTarget);
     try {
-      const response = await appApi.updateProfile({ name: values.get("name"), payoutMethod: values.get("payoutMethod"), notifications: values.get("notifications") === "on" });
-      onProfile(response.profile);
+      const updated = await onSave({ name: values.get("name"), payoutMethod: values.get("payoutMethod"), notifications: values.get("notifications") === "on" });
+      onProfile(updated);
       onToast("Settings saved");
     } finally { setSaving(false); }
   }
@@ -391,6 +392,7 @@ function LoadingScreen({ error, onRetry }: { error?: string; onRetry?: () => voi
 }
 
 export default function App() {
+  const [demoMode, setDemoMode] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [profile, setProfile] = useState<AppProfile | null>(null);
@@ -406,6 +408,12 @@ export default function App() {
 
   async function loadWorkspace() {
     setLoadError("");
+    if (demoMode) {
+      setProfile(JSON.parse(localStorage.getItem("eve-demo-profile") || JSON.stringify(demoProfile)));
+      setRole("admin");
+      setData(getDemoData());
+      return;
+    }
     try {
       const boot = await appApi.bootstrap();
       const response = await appApi.data();
@@ -418,6 +426,15 @@ export default function App() {
   }
 
   useEffect(() => {
+    if (localStorage.getItem("eve-demo-mode") === "true") {
+      setDemoMode(true);
+      setAuthenticated(true);
+      setSessionReady(true);
+      setProfile(JSON.parse(localStorage.getItem("eve-demo-profile") || JSON.stringify(demoProfile)));
+      setRole("admin");
+      setData(getDemoData());
+      return;
+    }
     supabase.auth.getSession().then(({ data: authData }) => {
       setAuthenticated(Boolean(authData.session));
       setSessionReady(true);
@@ -431,6 +448,46 @@ export default function App() {
     });
     return () => listener.subscription.unsubscribe();
   }, []);
+
+  function enterDemo() {
+    localStorage.setItem("eve-demo-mode", "true");
+    setDemoMode(true);
+    setAuthenticated(true);
+    setSessionReady(true);
+    setProfile(demoProfile);
+    setRole("admin");
+    setData(getDemoData());
+  }
+
+  async function createRecord(type: string, values: Record<string, unknown>) {
+    if (!demoMode) { await appApi.create(type, values); return; }
+    const nextRecord = { ...values, id: crypto.randomUUID(), name: String(values.name || "New record"), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } as EntityRecord;
+    const next = { ...data, [type]: [...(data[type] || []), nextRecord] };
+    saveDemoData(next);
+    setData(next);
+  }
+
+  async function updateRecord(type: string, id: string, values: Record<string, unknown>) {
+    if (!demoMode) { await appApi.update(type, id, values); return; }
+    const next = { ...data, [type]: (data[type] || []).map((item) => item.id === id ? { ...item, ...values, updatedAt: new Date().toISOString() } : item) };
+    saveDemoData(next);
+    setData(next);
+  }
+
+  async function removeRecord(type: string, id: string) {
+    if (!demoMode) { await appApi.remove(type, id); return; }
+    const next = { ...data, [type]: (data[type] || []).filter((item) => item.id !== id) };
+    saveDemoData(next);
+    setData(next);
+  }
+
+  async function saveProfile(values: Record<string, unknown>) {
+    if (!demoMode) return (await appApi.updateProfile(values)).profile;
+    const updated = { ...profile!, ...values } as AppProfile;
+    localStorage.setItem("eve-demo-profile", JSON.stringify(updated));
+    setProfile(updated);
+    return updated;
+  }
 
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
@@ -456,15 +513,15 @@ export default function App() {
   }, [globalQuery, data, role]);
 
   if (!sessionReady) return <LoadingScreen />;
-  if (!authenticated) return <AuthScreen />;
+  if (!authenticated) return <AuthScreen onDemo={enterDemo} />;
   if (loadError) return <LoadingScreen error={loadError} onRetry={loadWorkspace}/>;
   if (!profile) return <LoadingScreen />;
 
   let content: React.ReactNode;
   if (page === "Overview") content = role === "admin" ? <AdminOverview onNavigate={navigate} data={data} /> : <AffiliateOverview onNavigate={navigate} data={data}/>;
   else if (page === "AI content studio") content = <ContentStudio onToast={showToast}/>;
-  else if (page === "Settings") content = <SettingsPage profile={profile} onProfile={setProfile} onToast={showToast}/>;
-  else content = <FunctionalDataPage page={page} data={data} role={profile.role} onRefresh={loadWorkspace} onToast={showToast}/>;
+  else if (page === "Settings") content = <SettingsPage profile={profile} onProfile={setProfile} onToast={showToast} onSave={saveProfile}/>;
+  else content = <FunctionalDataPage page={page} data={data} role={profile.role} onRefresh={loadWorkspace} onToast={showToast} onCreate={createRecord} onUpdate={updateRecord} onRemove={removeRecord}/>;
 
-  return <div className="app-shell"><aside className={`sidebar ${sidebarOpen ? "open" : ""}`}><div className="sidebar-top"><Logo/><button className="mobile-close" onClick={() => setSidebarOpen(false)}><Icon name="close"/></button></div><div className="role-switcher"><span>Viewing as</span><button disabled={profile.role !== "admin"} onClick={() => { if (profile.role === "admin") { setRole(role === "admin" ? "affiliate" : "admin"); setPage("Overview"); } }}><span className={`role-avatar ${role}`}>{initials(role === "admin" ? profile.name : "Affiliate Preview")}</span><div><strong>{role === "admin" ? "Platform owner" : profile.role === "admin" ? "Affiliate preview" : "Affiliate"}</strong><small>{profile.role === "admin" ? "Switch workspace" : "Creator workspace"}</small></div>{profile.role === "admin" && <Icon name="arrowDown" size={14}/>}</button></div><nav><span className="nav-label">WORKSPACE</span>{nav.map((item) => <button key={item.label} className={page === item.label ? "active" : ""} onClick={() => navigate(item.label)}><Icon name={item.icon}/><span>{item.label}</span>{item.label === "Payments" && data.payments?.filter((item) => item.status === "Pending").length > 0 && <i className="nav-badge">{data.payments.filter((item) => item.status === "Pending").length}</i>}</button>)}<span className="nav-label settings-label">ACCOUNT</span><button onClick={() => navigate("Settings")} className={page === "Settings" ? "active" : ""}><Icon name="settings"/><span>Settings</span></button></nav><div className="upgrade-card"><span><Icon name="sparkles" size={17}/></span><strong>TryHolo.ai setup required</strong><p>Add a secure API secret before enabling generation.</p><button onClick={() => navigate("Settings")}>Manage integrations</button></div><div className="sidebar-help"><span>Need help?</span><button onClick={() => window.location.href = "mailto:support@evellc.shop?subject=Partner Hub Support"}>Email support <Icon name="chevron" size={14}/></button></div></aside>{sidebarOpen && <button className="backdrop" aria-label="Close navigation" onClick={() => setSidebarOpen(false)}/>}<main><header><button className="menu-button" aria-label="Open navigation" onClick={() => setSidebarOpen(true)}><Icon name="menu"/></button><div className="global-search-wrap"><div className="search"><Icon name="search" size={17}/><input id="global-search" aria-label="Search all records" value={globalQuery} onChange={(event) => setGlobalQuery(event.target.value)} placeholder="Search affiliates, products, teams..."/><kbd>⌘ K</kbd></div>{globalQuery && <div className="search-results">{searchResults.length ? searchResults.map(({ type, page: resultPage, row }) => <button key={`${type}-${row.id}`} onClick={() => navigate(resultPage)}><span className="list-icon"><Icon name="search" size={15}/></span><div><strong>{row.name || row.action}</strong><small>{resultPage} · {row.status || row.detail}</small></div><Icon name="chevron" size={14}/></button>) : <div className="empty-row">No results found.</div>}</div>}</div><div className="header-actions"><div className="profile-wrap"><button className="icon-button notification" aria-label="Notifications" onClick={() => setNotificationsOpen(!notificationsOpen)}><Icon name="bell"/>{data.activities?.length > 0 && <i/>}</button>{notificationsOpen && <div className="notification-menu"><strong>Recent activity</strong>{data.activities?.slice(0, 4).map((item) => <button key={item.id} onClick={() => navigate("Reports")}><span>{item.action}</span><small>{item.detail}</small></button>)}</div>}</div><div className="profile-wrap"><button className="profile" onClick={() => setProfileOpen(!profileOpen)}><span>{initials(profile.name)}</span><div><strong>{profile.name}</strong><small>{profile.role === "admin" ? "Platform owner" : "Affiliate"}</small></div><Icon name="arrowDown" size={14}/></button>{profileOpen && <div className="profile-menu"><button onClick={() => { navigate("Settings"); setProfileOpen(false); }}>View profile</button><button onClick={() => { navigate("Settings"); setProfileOpen(false); }}>Account settings</button><button onClick={async () => { await supabase.auth.signOut(); setProfileOpen(false); }}>Sign out</button></div>}</div></div></header><div className="page-content"><div className="page-title"><div><p>{role === "admin" ? "ADMIN WORKSPACE" : "AFFILIATE WORKSPACE"}</p><h1>{page === "Overview" ? `Good morning, ${profile.name.split(" ")[0]}` : page}</h1><span>{page === "Overview" ? role === "admin" ? "Here’s what’s happening across EveLLC today." : "Your community and earnings at a glance." : pageConfigs[page]?.description || "Manage your account and workspace."}</span></div>{page === "Overview" && <div className="date-pill">{new Date().toLocaleDateString(undefined, { month: "long", year: "numeric" })}<Icon name="check" size={14}/></div>}</div>{content}</div></main>{toast && <div className="toast"><span><Icon name="check" size={15}/></span>{toast}</div>}</div>;
+  return <div className="app-shell"><aside className={`sidebar ${sidebarOpen ? "open" : ""}`}><div className="sidebar-top"><Logo/><button className="mobile-close" onClick={() => setSidebarOpen(false)}><Icon name="close"/></button></div><div className="role-switcher"><span>Viewing as</span><button disabled={profile.role !== "admin"} onClick={() => { if (profile.role === "admin") { setRole(role === "admin" ? "affiliate" : "admin"); setPage("Overview"); } }}><span className={`role-avatar ${role}`}>{initials(role === "admin" ? profile.name : "Affiliate Preview")}</span><div><strong>{role === "admin" ? "Platform owner" : profile.role === "admin" ? "Affiliate preview" : "Affiliate"}</strong><small>{profile.role === "admin" ? "Switch workspace" : "Creator workspace"}</small></div>{profile.role === "admin" && <Icon name="arrowDown" size={14}/>}</button></div><nav><span className="nav-label">WORKSPACE</span>{nav.map((item) => <button key={item.label} className={page === item.label ? "active" : ""} onClick={() => navigate(item.label)}><Icon name={item.icon}/><span>{item.label}</span>{item.label === "Payments" && data.payments?.filter((item) => item.status === "Pending").length > 0 && <i className="nav-badge">{data.payments.filter((item) => item.status === "Pending").length}</i>}</button>)}<span className="nav-label settings-label">ACCOUNT</span><button onClick={() => navigate("Settings")} className={page === "Settings" ? "active" : ""}><Icon name="settings"/><span>Settings</span></button></nav><div className="upgrade-card"><span><Icon name="sparkles" size={17}/></span><strong>{demoMode ? "Demo workspace active" : "TryHolo.ai setup required"}</strong><p>{demoMode ? "Data is saved in this browser." : "Add a secure API secret before enabling generation."}</p><button onClick={() => navigate("Settings")}>Manage integrations</button></div><div className="sidebar-help"><span>Need help?</span><button onClick={() => window.location.href = "mailto:support@evellc.shop?subject=Partner Hub Support"}>Email support <Icon name="chevron" size={14}/></button></div></aside>{sidebarOpen && <button className="backdrop" aria-label="Close navigation" onClick={() => setSidebarOpen(false)}/>}<main><header><button className="menu-button" aria-label="Open navigation" onClick={() => setSidebarOpen(true)}><Icon name="menu"/></button><div className="global-search-wrap"><div className="search"><Icon name="search" size={17}/><input id="global-search" aria-label="Search all records" value={globalQuery} onChange={(event) => setGlobalQuery(event.target.value)} placeholder="Search affiliates, products, teams..."/><kbd>⌘ K</kbd></div>{globalQuery && <div className="search-results">{searchResults.length ? searchResults.map(({ type, page: resultPage, row }) => <button key={`${type}-${row.id}`} onClick={() => navigate(resultPage)}><span className="list-icon"><Icon name="search" size={15}/></span><div><strong>{row.name || row.action}</strong><small>{resultPage} · {row.status || row.detail}</small></div><Icon name="chevron" size={14}/></button>) : <div className="empty-row">No results found.</div>}</div>}</div><div className="header-actions"><div className="profile-wrap"><button className="icon-button notification" aria-label="Notifications" onClick={() => setNotificationsOpen(!notificationsOpen)}><Icon name="bell"/>{data.activities?.length > 0 && <i/>}</button>{notificationsOpen && <div className="notification-menu"><strong>Recent activity</strong>{data.activities?.slice(0, 4).map((item) => <button key={item.id} onClick={() => navigate("Reports")}><span>{item.action}</span><small>{item.detail}</small></button>)}</div>}</div><div className="profile-wrap"><button className="profile" onClick={() => setProfileOpen(!profileOpen)}><span>{initials(profile.name)}</span><div><strong>{profile.name}</strong><small>{demoMode ? "Demo owner" : profile.role === "admin" ? "Platform owner" : "Affiliate"}</small></div><Icon name="arrowDown" size={14}/></button>{profileOpen && <div className="profile-menu"><button onClick={() => { navigate("Settings"); setProfileOpen(false); }}>View profile</button><button onClick={() => { navigate("Settings"); setProfileOpen(false); }}>Account settings</button><button onClick={async () => { if (demoMode) { localStorage.removeItem("eve-demo-mode"); setDemoMode(false); setAuthenticated(false); setProfile(null); } else await supabase.auth.signOut(); setProfileOpen(false); }}>Sign out</button></div>}</div></div></header><div className="page-content"><div className="page-title"><div><p>{role === "admin" ? "ADMIN WORKSPACE" : "AFFILIATE WORKSPACE"}</p><h1>{page === "Overview" ? `Good morning, ${profile.name.split(" ")[0]}` : page}</h1><span>{page === "Overview" ? role === "admin" ? "Here’s what’s happening across EveLLC today." : "Your community and earnings at a glance." : pageConfigs[page]?.description || "Manage your account and workspace."}</span></div>{page === "Overview" && <div className="date-pill">{new Date().toLocaleDateString(undefined, { month: "long", year: "numeric" })}<Icon name="check" size={14}/></div>}</div>{content}</div></main>{toast && <div className="toast"><span><Icon name="check" size={15}/></span>{toast}</div>}</div>;
 }
