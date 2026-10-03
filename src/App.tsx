@@ -421,7 +421,8 @@ export default function App() {
       setRole((response.profile || boot.profile).role);
       setData(response.data);
     } catch (error) {
-      setLoadError(error instanceof Error ? `${error.message}. Deploy the Supabase Edge Function from Make settings, then retry.` : "Unable to load the workspace.");
+      console.warn("Supabase workspace unavailable; switching to local demo mode.", error);
+      enterDemo();
     }
   }
 
