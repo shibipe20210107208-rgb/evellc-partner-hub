@@ -283,8 +283,9 @@ function downloadCsv(filename: string, rows: EntityRecord[], columns: string[]) 
   URL.revokeObjectURL(url);
 }
 
-function AuthScreen({ onDemo }: { onDemo: () => void }) {
+function AuthScreen({ onDemo }: { onDemo: (role: "admin" | "affiliate") => void }) {
   const [mode, setMode] = useState<"login" | "signup" | "reset">("login");
+  const [selectedRole, setSelectedRole] = useState<"admin" | "affiliate">("affiliate");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -315,7 +316,7 @@ function AuthScreen({ onDemo }: { onDemo: () => void }) {
     }
   }
 
-  return <div className="auth-screen"><div className="auth-brand"><Logo /><div><span className="eyebrow">EVELLC PARTNER NETWORK</span><h1>Build influence.<br/>Grow together.</h1><p>One secure workspace for products, content, referrals, commissions, and team growth.</p><div className="auth-proof"><span><Icon name="check"/></span><div><strong>Global partner ecosystem</strong><small>Commerce tools across every EveLLC marketplace.</small></div></div></div></div><form className="auth-card" onSubmit={submit}><span className="eyebrow">{mode === "signup" ? "JOIN THE NETWORK" : mode === "reset" ? "ACCOUNT RECOVERY" : "WELCOME BACK"}</span><h2>{mode === "signup" ? "Create your account" : mode === "reset" ? "Reset your password" : "Sign in to Partner Hub"}</h2><p>{mode === "signup" ? "The first registered account becomes platform owner." : "Use your verified EveLLC partner credentials."}</p>{mode === "signup" && <label>Full name<input name="name" required autoComplete="name"/></label>}<label>Email address<input name="email" type="email" required autoComplete="email"/></label>{mode !== "reset" && <label>Password<input name="password" type="password" minLength={8} required autoComplete={mode === "signup" ? "new-password" : "current-password"}/></label>}{message && <div className="auth-message">{message}</div>}<Button type="submit">{loading ? "Please wait…" : mode === "signup" ? "Create account" : mode === "reset" ? "Send reset link" : "Sign in"}</Button><div className="auth-links">{mode === "login" && <button type="button" onClick={() => setMode("reset")}>Forgot password?</button>}<button type="button" onClick={() => setMode(mode === "signup" ? "login" : "signup")}>{mode === "signup" ? "Already registered? Sign in" : "New partner? Create account"}</button></div><div className="auth-divider"><span>or</span></div><Button variant="secondary" onClick={onDemo}>Continue in demo workspace</Button><small className="demo-note">No account required. Changes stay in this browser.</small></form></div>;
+  return <div className="auth-screen"><div className="auth-brand"><Logo /><div><span className="eyebrow">EVELLC PARTNER NETWORK</span><h1>Build influence.<br/>Grow together.</h1><p>One secure workspace for products, content, referrals, commissions, and team growth.</p><div className="auth-proof"><span><Icon name="check"/></span><div><strong>Global partner ecosystem</strong><small>Commerce tools across every EveLLC marketplace.</small></div></div></div></div><form className="auth-card" onSubmit={submit}><span className="eyebrow">{mode === "signup" ? "JOIN THE NETWORK" : mode === "reset" ? "ACCOUNT RECOVERY" : "WELCOME BACK"}</span><h2>{mode === "signup" ? "Create your account" : mode === "reset" ? "Reset your password" : "Sign in to Partner Hub"}</h2><p>{mode === "signup" ? "Choose the workspace that matches your account." : "Select your role, then use your verified credentials."}</p><div className="role-tabs" role="tablist" aria-label="Choose account role"><button type="button" role="tab" aria-selected={selectedRole === "affiliate"} className={selectedRole === "affiliate" ? "active" : ""} onClick={() => setSelectedRole("affiliate")}><span><Icon name="sparkles" size={17}/></span><div><strong>Affiliate</strong><small>Influencer & team member</small></div></button><button type="button" role="tab" aria-selected={selectedRole === "admin"} className={selectedRole === "admin" ? "active" : ""} onClick={() => setSelectedRole("admin")}><span><Icon name="settings" size={17}/></span><div><strong>Admin</strong><small>Platform owner</small></div></button></div><div className="selected-role-note"><Icon name={selectedRole === "admin" ? "settings" : "users"} size={14}/><span>{selectedRole === "admin" ? "Manage affiliates, products, commissions, payments, and reports." : "Promote products, create content, grow your team, and track earnings."}</span></div>{mode === "signup" && <label>Full name<input name="name" required autoComplete="name"/></label>}<label>Email address<input name="email" type="email" required autoComplete="email"/></label>{mode !== "reset" && <label>Password<input name="password" type="password" minLength={8} required autoComplete={mode === "signup" ? "new-password" : "current-password"}/></label>}{message && <div className="auth-message">{message}</div>}<Button type="submit">{loading ? "Please wait…" : mode === "signup" ? `Create ${selectedRole === "admin" ? "admin" : "affiliate"} account` : mode === "reset" ? "Send reset link" : `Sign in as ${selectedRole === "admin" ? "admin" : "affiliate"}`}</Button><div className="auth-links">{mode === "login" && <button type="button" onClick={() => setMode("reset")}>Forgot password?</button>}<button type="button" onClick={() => setMode(mode === "signup" ? "login" : "signup")}>{mode === "signup" ? "Already registered? Sign in" : "New partner? Create account"}</button></div><div className="auth-divider"><span>or</span></div><Button variant="secondary" onClick={() => onDemo(selectedRole)}>Explore {selectedRole === "admin" ? "admin" : "affiliate"} demo</Button><small className="demo-note">No account required. Changes stay in this browser.</small></form></div>;
 }
 
 function RecordModal({ config, record, onClose, onSave }: { config: PageConfig; record: EntityRecord | null; onClose: () => void; onSave: (values: Record<string, unknown>) => Promise<void> }) {
@@ -422,17 +423,18 @@ export default function App() {
       setData(response.data);
     } catch (error) {
       console.warn("Supabase workspace unavailable; switching to local demo mode.", error);
-      enterDemo();
+      enterDemo("admin");
     }
   }
 
   useEffect(() => {
     if (localStorage.getItem("eve-demo-mode") === "true") {
+      const savedProfile = JSON.parse(localStorage.getItem("eve-demo-profile") || JSON.stringify(demoProfile)) as AppProfile;
       setDemoMode(true);
       setAuthenticated(true);
       setSessionReady(true);
-      setProfile(JSON.parse(localStorage.getItem("eve-demo-profile") || JSON.stringify(demoProfile)));
-      setRole("admin");
+      setProfile(savedProfile);
+      setRole(savedProfile.role);
       setData(getDemoData());
       return;
     }
@@ -450,13 +452,15 @@ export default function App() {
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  function enterDemo() {
+  function enterDemo(selectedRole: "admin" | "affiliate") {
+    const selectedProfile = { ...demoProfile, role: selectedRole, name: selectedRole === "admin" ? "Avery Owens" : "Maya Patel", email: selectedRole === "admin" ? "demo@evellc.shop" : "maya@create.co" };
     localStorage.setItem("eve-demo-mode", "true");
+    localStorage.setItem("eve-demo-profile", JSON.stringify(selectedProfile));
     setDemoMode(true);
     setAuthenticated(true);
     setSessionReady(true);
-    setProfile(demoProfile);
-    setRole("admin");
+    setProfile(selectedProfile);
+    setRole(selectedRole);
     setData(getDemoData());
   }
 
