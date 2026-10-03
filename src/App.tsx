@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { appApi, AppData, AppProfile, EntityRecord, supabase } from "./lib/supabase";
 
 type IconName =
   | "dashboard"
@@ -88,21 +89,6 @@ const activities = [
   { initials: "DW", color: "green", text: "David Wu requested a payout", meta: "$842.50 pending", time: "1 hr ago" },
 ];
 
-const affiliates = [
-  { name: "Maya Patel", email: "maya@create.co", team: "Elevate", sales: "$12,480", earned: "$1,872", status: "Active", initials: "MP" },
-  { name: "Sofia Kim", email: "sofia@dailyglow.io", team: "Nova", sales: "$9,340", earned: "$1,401", status: "Active", initials: "SK" },
-  { name: "Jordan Reed", email: "jordan@jrmedia.com", team: "Elevate", sales: "$7,865", earned: "$1,180", status: "Review", initials: "JR" },
-  { name: "David Wu", email: "david@fitfoundry.co", team: "Momentum", sales: "$6,220", earned: "$933", status: "Active", initials: "DW" },
-  { name: "Amara Jones", email: "amara@wellness.me", team: "Nova", sales: "$4,970", earned: "$745", status: "Active", initials: "AJ" },
-];
-
-const products = [
-  { name: "Daily Wellness Bundle", category: "Wellness", price: "$79.00", commission: "15%", status: "Active" },
-  { name: "Pro Fitness Resistance Set", category: "Fitness", price: "$42.00", commission: "18%", status: "Active" },
-  { name: "Vitamin Essentials Pack", category: "Pharmacy", price: "$54.50", commission: "12%", status: "Active" },
-  { name: "Signature Scrub Set", category: "Uniforms", price: "$68.00", commission: "14%", status: "Draft" },
-];
-
 function Logo() {
   return (
     <div className="brand">
@@ -112,8 +98,8 @@ function Logo() {
   );
 }
 
-function Button({ children, variant = "primary", icon, onClick }: { children: React.ReactNode; variant?: "primary" | "secondary" | "ghost"; icon?: IconName; onClick?: () => void }) {
-  return <button className={`button ${variant}`} onClick={onClick}>{icon && <Icon name={icon} size={16} />}{children}</button>;
+function Button({ children, variant = "primary", icon, onClick, type = "button" }: { children: React.ReactNode; variant?: "primary" | "secondary" | "ghost"; icon?: IconName; onClick?: () => void; type?: "button" | "submit" }) {
+  return <button type={type} className={`button ${variant}`} onClick={onClick}>{icon && <Icon name={icon} size={16} />}{children}</button>;
 }
 
 function StatCard({ label, value, change, tone, icon }: { label: string; value: string; change: string; tone: string; icon: IconName }) {
@@ -132,28 +118,31 @@ function StatCard({ label, value, change, tone, icon }: { label: string; value: 
 }
 
 function ChartCard({ affiliate = false }: { affiliate?: boolean }) {
+  const [range, setRange] = useState("12 months");
   const bars = [38, 44, 41, 58, 53, 68, 62, 78, 71, 82, 76, 93];
+  const visibleBars = range === "30 days" ? bars.slice(-4) : range === "6 months" ? bars.slice(-6) : bars;
+  const labels = range === "30 days" ? ["W1", "W2", "W3", "W4"] : range === "6 months" ? ["Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] : ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   return (
     <article className="panel chart-panel">
       <div className="panel-heading">
         <div><h2>{affiliate ? "Your sales performance" : "Revenue performance"}</h2><p>{affiliate ? "Sales and commission earnings" : "Combined revenue across the Eve network"}</p></div>
-        <select aria-label="Chart time range" defaultValue="12 months"><option>12 months</option><option>6 months</option><option>30 days</option></select>
+        <select aria-label="Chart time range" value={range} onChange={(event) => setRange(event.target.value)}><option>12 months</option><option>6 months</option><option>30 days</option></select>
       </div>
       <div className="chart-summary">
         <div><span>{affiliate ? "Total sales" : "Gross revenue"}</span><strong>{affiliate ? "$18,640" : "$284,920"}</strong></div>
         <div className="legend"><i></i>{affiliate ? "Commission" : "Net revenue"}</div>
       </div>
       <div className="bar-chart">
-        {bars.map((height, index) => <div className="bar-slot" key={index}><div className="bar" style={{ height: `${height}%` }}></div><span>{["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][index]}</span></div>)}
+        {visibleBars.map((height, index) => <div className="bar-slot" key={index}><div className="bar" style={{ height: `${height}%` }}></div><span>{labels[index]}</span></div>)}
       </div>
     </article>
   );
 }
 
-function ActivityCard() {
+function ActivityCard({ onViewAll }: { onViewAll?: () => void }) {
   return (
     <article className="panel activity-panel">
-      <div className="panel-heading"><div><h2>Recent activity</h2><p>Latest across your network</p></div><button className="text-button">View all</button></div>
+      <div className="panel-heading"><div><h2>Recent activity</h2><p>Latest across your network</p></div><button className="text-button" onClick={onViewAll}>View all</button></div>
       <div className="activity-list">
         {activities.map((item) => <div className="activity" key={item.text}><span className={`avatar ${item.color}`}>{item.initials}</span><div><strong>{item.text}</strong><span>{item.meta}</span></div><time>{item.time}</time></div>)}
       </div>
@@ -166,25 +155,28 @@ function NetworkCard() {
   return (
     <article className="panel network-panel">
       <div className="panel-heading"><div><h2>Eve network</h2><p>Regional marketplaces</p></div><span className="live"><i></i>All systems live</span></div>
-      <div className="network-grid">{sites.map((site, index) => <button key={site}><span className={`site-icon site-${index}`}><Icon name="globe" size={16} /></span><span>{site}</span><Icon name="chevron" size={15} /></button>)}</div>
+      <div className="network-grid">{sites.map((site, index) => <button key={site} onClick={() => window.open(`https://${site}`, "_blank", "noopener,noreferrer")}><span className={`site-icon site-${index}`}><Icon name="globe" size={16} /></span><span>{site}</span><Icon name="chevron" size={15} /></button>)}</div>
     </article>
   );
 }
 
-function AdminOverview() {
+function AdminOverview({ onNavigate, data }: { onNavigate: (page: string) => void; data: AppData }) {
+  const revenue = (data.affiliates || []).reduce((sum, item) => sum + Number(item.sales || 0), 0);
+  const sales = (data.tracking || []).reduce((sum, item) => sum + Number(item.sales || 0), 0);
+  const payouts = (data.payouts || []).filter((item) => item.status === "Pending").reduce((sum, item) => sum + Number(item.amount || 0), 0);
   return (
     <>
       <div className="stats-grid">
-        <StatCard label="Total revenue" value="$284,920" change="+18.2%" tone="purple" icon="chart" />
-        <StatCard label="Total affiliates" value="2,846" change="+12.4%" tone="coral" icon="users" />
-        <StatCard label="Total sales" value="8,942" change="+9.8%" tone="blue" icon="products" />
-        <StatCard label="Pending payouts" value="$18,420" change="-3.1%" tone="amber" icon="wallet" />
+        <StatCard label="Total revenue" value={`$${revenue.toLocaleString()}`} change="+18.2%" tone="purple" icon="chart" />
+        <StatCard label="Total affiliates" value={(data.affiliates || []).length.toLocaleString()} change="+12.4%" tone="coral" icon="users" />
+        <StatCard label="Tracked sales" value={sales.toLocaleString()} change="+9.8%" tone="blue" icon="products" />
+        <StatCard label="Pending payouts" value={`$${payouts.toLocaleString()}`} change="-3.1%" tone="amber" icon="wallet" />
       </div>
-      <div className="dashboard-grid"><ChartCard /><ActivityCard /></div>
+      <div className="dashboard-grid"><ChartCard /><ActivityCard onViewAll={() => onNavigate("Reports")} /></div>
       <div className="dashboard-grid lower">
         <NetworkCard />
         <article className="panel revenue-panel">
-          <div className="panel-heading"><div><h2>Revenue breakdown</h2><p>This month</p></div><button className="icon-button"><Icon name="more" /></button></div>
+          <div className="panel-heading"><div><h2>Revenue breakdown</h2><p>This month</p></div><button className="icon-button" aria-label="Export revenue breakdown" onClick={() => downloadCsv("revenue-breakdown.csv", [{ id: "revenue", name: "November", productSales: 64, membership: 21, ugc: 15 }], ["name", "productSales", "membership", "ugc"])}><Icon name="download" /></button></div>
           <div className="donut-wrap"><div className="donut"><div><strong>$38.4K</strong><span>Total</span></div></div><div className="donut-legend"><div><i className="purple-dot"></i><span>Product sales</span><strong>64%</strong></div><div><i className="coral-dot"></i><span>Membership</span><strong>21%</strong></div><div><i className="blue-dot"></i><span>UGC videos</span><strong>15%</strong></div></div></div>
         </article>
       </div>
@@ -192,20 +184,22 @@ function AdminOverview() {
   );
 }
 
-function AffiliateOverview({ onNavigate }: { onNavigate: (page: string) => void }) {
+function AffiliateOverview({ onNavigate, data }: { onNavigate: (page: string) => void; data: AppData }) {
+  const earnings = (data.payouts || []).reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const clicks = (data.links || []).reduce((sum, item) => sum + Number(item.clicks || 0), 0);
   return (
     <>
       <div className="welcome-card">
-        <div><span className="eyebrow">CREATOR SPOTLIGHT</span><h2>Turn your influence into impact.</h2><p>Your links drove 184 clicks this week. Keep the momentum going with fresh AI-powered content.</p><Button icon="sparkles" onClick={() => onNavigate("AI content studio")}>Create content</Button></div>
+        <div><span className="eyebrow">CREATOR SPOTLIGHT</span><h2>Turn your influence into impact.</h2><p>Your links have driven {clicks.toLocaleString()} tracked clicks. Keep the momentum going with fresh product content.</p><Button icon="sparkles" onClick={() => onNavigate("AI content studio")}>Create content</Button></div>
         <div className="welcome-graphic"><span><Icon name="chart" size={32} /></span><strong>+24%</strong><small>engagement</small></div>
       </div>
       <div className="stats-grid">
-        <StatCard label="Total earnings" value="$2,796" change="+18.2%" tone="purple" icon="wallet" />
-        <StatCard label="Product sales" value="$18,640" change="+12.4%" tone="coral" icon="products" />
-        <StatCard label="Referral earnings" value="$184.50" change="+9.8%" tone="blue" icon="teams" />
-        <StatCard label="Pending payout" value="$642.00" change="+4.1%" tone="amber" icon="card" />
+        <StatCard label="Total earnings" value={`$${earnings.toLocaleString()}`} change="+18.2%" tone="purple" icon="wallet" />
+        <StatCard label="Active links" value={(data.links || []).filter((item) => item.status === "Active").length.toString()} change="+12.4%" tone="coral" icon="products" />
+        <StatCard label="Team network" value={(data.teams || []).reduce((sum, item) => sum + Number(item.members || 0), 0).toLocaleString()} change="+9.8%" tone="blue" icon="teams" />
+        <StatCard label="Pending payout" value={`$${(data.payouts || []).filter((item) => item.status === "Pending").reduce((sum, item) => sum + Number(item.amount || 0), 0).toLocaleString()}`} change="+4.1%" tone="amber" icon="card" />
       </div>
-      <div className="dashboard-grid"><ChartCard affiliate /><ActivityCard /></div>
+      <div className="dashboard-grid"><ChartCard affiliate /><ActivityCard onViewAll={() => onNavigate("My team")} /></div>
       <div className="quick-actions">
         <button onClick={() => onNavigate("My links")}><span className="purple"><Icon name="link" /></span><div><strong>Create an affiliate link</strong><small>Share a product and start earning</small></div><Icon name="chevron" /></button>
         <button onClick={() => onNavigate("UGC videos")}><span className="coral"><Icon name="video" /></span><div><strong>Generate a UGC video</strong><small>AI video generation for $1.50</small></div><Icon name="chevron" /></button>
@@ -215,71 +209,30 @@ function AffiliateOverview({ onNavigate }: { onNavigate: (page: string) => void 
   );
 }
 
-function DataPage({ page, onToast }: { page: string; onToast: (message: string) => void }) {
-  const isAffiliates = page === "Affiliates";
-  const isProducts = page === "Product catalog";
-  const titles: Record<string, [string, string]> = {
-    Affiliates: ["Affiliate management", "Manage creators, account access, and performance."],
-    "Teams & referrals": ["Teams & referral network", "Monitor team hierarchy, recruiters, and referral performance."],
-    "Product catalog": ["Product catalog", "Manage products across EveLLC marketplaces and campaigns."],
-    "Amazon tracking": ["Amazon tracking IDs", "Assign IDs to teams and monitor sales attribution."],
-    Commissions: ["Commission management", "Track affiliate, team, and referral commissions."],
-    Payments: ["Payments & transactions", "Manage registration, UGC payments, refunds, and payouts."],
-    "Content & UGC": ["Content & UGC library", "Review AI-generated content, videos, and generation usage."],
-    Reports: ["Reports & analytics", "Performance insights across the entire EveLLC ecosystem."],
-    "My links": ["Affiliate links", "Create, share, and monitor your product tracking links."],
-    "AI content studio": ["AI content studio", "Create product-specific social content with TryHolo.ai."],
-    "UGC videos": ["UGC video studio", "Generate and manage social-ready product videos."],
-    "My team": ["My referral team", "Grow your network and track referral commissions."],
-    "Earnings & payouts": ["Earnings & payouts", "Review commissions, transactions, and payout details."],
-  };
-  const [title, description] = titles[page] || [page, "Everything you need, all in one place."];
-
-  if (page === "AI content studio") return <ContentStudio onToast={onToast} />;
-
-  return (
-    <>
-      <div className="section-title-row"><div><h2>{title}</h2><p>{description}</p></div><Button icon={isProducts ? "plus" : "download"} onClick={() => onToast(isProducts ? "New product draft created" : "Report exported successfully")}>{isProducts ? "Add product" : "Export report"}</Button></div>
-      <div className="section-stats">
-        <div><span>{isAffiliates ? "Active affiliates" : isProducts ? "Active products" : "This month"}</span><strong>{isAffiliates ? "2,719" : isProducts ? "1,284" : "$38,420"}</strong><small>↑ 12.4% from last month</small></div>
-        <div><span>{isAffiliates ? "Pending approval" : isProducts ? "In campaigns" : "Pending"}</span><strong>{isAffiliates ? "42" : isProducts ? "836" : "$8,420"}</strong><small>Requires your attention</small></div>
-        <div><span>{isAffiliates ? "Suspended" : isProducts ? "Categories" : "Completed"}</span><strong>{isAffiliates ? "85" : isProducts ? "18" : "1,842"}</strong><small>Updated today</small></div>
-      </div>
-      <article className="panel table-panel">
-        <div className="table-toolbar"><div className="search small"><Icon name="search" size={16}/><input aria-label="Search records" placeholder={`Search ${page.toLowerCase()}...`} /></div><div className="filters"><button>All status <Icon name="arrowDown" size={14}/></button><button>Newest first <Icon name="arrowDown" size={14}/></button></div></div>
-        {isAffiliates ? (
-          <div className="table-scroll"><table><thead><tr><th>Affiliate</th><th>Team</th><th>Total sales</th><th>Earned</th><th>Status</th><th></th></tr></thead><tbody>{affiliates.map((row) => <tr key={row.email}><td><div className="person"><span className="avatar purple">{row.initials}</span><div><strong>{row.name}</strong><small>{row.email}</small></div></div></td><td>{row.team}</td><td><strong>{row.sales}</strong></td><td>{row.earned}</td><td><span className={`status ${row.status.toLowerCase()}`}>{row.status}</span></td><td><button className="icon-button"><Icon name="more"/></button></td></tr>)}</tbody></table></div>
-        ) : isProducts ? (
-          <div className="table-scroll"><table><thead><tr><th>Product</th><th>Category</th><th>Price</th><th>Commission</th><th>Status</th><th></th></tr></thead><tbody>{products.map((row, index) => <tr key={row.name}><td><div className="person"><span className={`product-thumb thumb-${index}`}><Icon name="products"/></span><strong>{row.name}</strong></div></td><td>{row.category}</td><td><strong>{row.price}</strong></td><td>{row.commission}</td><td><span className={`status ${row.status.toLowerCase()}`}>{row.status}</span></td><td><button className="icon-button"><Icon name="more"/></button></td></tr>)}</tbody></table></div>
-        ) : <GenericPage page={page} onToast={onToast} />}
-      </article>
-    </>
-  );
-}
-
-function GenericPage({ page, onToast }: { page: string; onToast: (message: string) => void }) {
-  const items = [
-    { title: `${page} summary`, meta: "Updated 5 minutes ago", value: "$12,480", status: "Active" },
-    { title: "Elevate creator campaign", meta: "42 participating affiliates", value: "$8,942", status: "Active" },
-    { title: "Wellness product launch", meta: "Global marketplace", value: "$6,204", status: "Review" },
-    { title: "November performance", meta: "Monthly report", value: "$4,820", status: "Active" },
-  ];
-  return <div className="generic-list">{items.map((item, index) => <button key={item.title} onClick={() => onToast(`${item.title} opened`)}><span className={`list-icon list-${index}`}><Icon name={page.includes("video") || page.includes("Content") ? "video" : "chart"}/></span><div><strong>{item.title}</strong><small>{item.meta}</small></div><span className="list-value">{item.value}</span><span className={`status ${item.status.toLowerCase()}`}>{item.status}</span><Icon name="chevron"/></button>)}</div>;
-}
-
 function ContentStudio({ onToast }: { onToast: (message: string) => void }) {
   const [caption, setCaption] = useState("");
   const [generated, setGenerated] = useState(false);
-  const generate = () => {
-    setGenerated(true);
-    setCaption("Your everyday wellness, elevated. Discover the Daily Wellness Bundle from EveLLC—thoughtfully curated essentials for feeling your best, every day. Shop through my link and start your routine today. #EveWellness #EverydayHealth");
-    onToast("New content generated with TryHolo.ai");
+  const [product, setProduct] = useState("Daily Wellness Bundle");
+  const [format, setFormat] = useState("Instagram caption");
+  const [tone, setTone] = useState("Warm & authentic");
+  const [error, setError] = useState("");
+  const generate = async () => {
+    setError("");
+    try {
+      const response = await appApi.generateContent({ product, format, tone });
+      setCaption(response.content);
+      setGenerated(true);
+      onToast("New content generated with TryHolo.ai");
+    } catch (reason) {
+      setGenerated(false);
+      setError(reason instanceof Error ? reason.message : "Generation failed");
+    }
   };
   return (
     <>
-      <div className="section-title-row"><div><h2>AI content studio</h2><p>Create conversion-ready content powered by TryHolo.ai.</p></div><span className="credit-pill"><Icon name="sparkles" size={15}/> 24 credits remaining</span></div>
+      <div className="section-title-row"><div><h2>AI content studio</h2><p>Create conversion-ready content powered by TryHolo.ai.</p></div><span className="credit-pill"><Icon name="sparkles" size={15}/> API connection required</span></div>
       <div className="studio-grid">
-        <article className="panel studio-form"><h3>Create something new</h3><label>Choose a product<select><option>Daily Wellness Bundle</option><option>Vitamin Essentials Pack</option><option>Pro Fitness Resistance Set</option></select></label><label>Content format<div className="format-grid"><button className="selected">Instagram caption</button><button>TikTok script</button><button>Email copy</button><button>Product review</button></div></label><label>Brand tone<select><option>Warm & authentic</option><option>Bold & energetic</option><option>Clear & educational</option></select></label><Button icon="sparkles" onClick={generate}>Generate content</Button><small className="cost-note">Uses 1 TryHolo.ai credit</small></article>
+        <article className="panel studio-form"><h3>Create something new</h3><label>Choose a product<select value={product} onChange={(event) => setProduct(event.target.value)}><option>Daily Wellness Bundle</option><option>Vitamin Essentials Pack</option><option>Pro Fitness Resistance Set</option></select></label><label>Content format<div className="format-grid">{["Instagram caption", "TikTok script", "Email copy", "Product review"].map((item) => <button key={item} className={format === item ? "selected" : ""} onClick={() => setFormat(item)}>{item}</button>)}</div></label><label>Brand tone<select value={tone} onChange={(event) => setTone(event.target.value)}><option>Warm & authentic</option><option>Bold & energetic</option><option>Clear & educational</option></select></label>{error && <div className="auth-message">{error}</div>}<Button icon="sparkles" onClick={generate}>Generate content</Button><small className="cost-note">A configured TryHolo.ai account is required</small></article>
         <article className={`panel output-card ${generated ? "generated" : ""}`}>
           {generated ? <><div className="panel-heading"><div><span className="eyebrow">GENERATED COPY</span><h3>Instagram caption</h3></div><button className="icon-button" onClick={() => { navigator.clipboard?.writeText(caption); onToast("Caption copied to clipboard"); }}><Icon name="copy"/></button></div><textarea value={caption} onChange={(e) => setCaption(e.target.value)} /><div className="output-footer"><span>{caption.length} characters</span><div><Button variant="secondary" icon="download" onClick={() => onToast("Content saved to your library")}>Save</Button><Button icon="copy" onClick={() => { navigator.clipboard?.writeText(caption); onToast("Caption copied to clipboard"); }}>Copy</Button></div></div></> : <div className="empty-output"><span><Icon name="sparkles" size={28}/></span><h3>Your content will appear here</h3><p>Choose a product and format, then let TryHolo.ai create something compelling.</p></div>}
         </article>
@@ -288,60 +241,230 @@ function ContentStudio({ onToast }: { onToast: (message: string) => void }) {
   );
 }
 
+type Field = { key: string; label: string; type?: "text" | "email" | "number" | "date" | "url" | "select"; options?: string[] };
+type PageConfig = { type: string; title: string; description: string; action: string; fields: Field[]; columns: string[]; readOnly?: boolean };
+
+const pageConfigs: Record<string, PageConfig> = {
+  Affiliates: { type: "affiliates", title: "Affiliate management", description: "Approve, suspend, assign, and review every affiliate account.", action: "Add affiliate", columns: ["name", "email", "team", "sales", "earned", "status"], fields: [{ key: "name", label: "Full name" }, { key: "email", label: "Email", type: "email" }, { key: "team", label: "Team" }, { key: "sales", label: "Sales", type: "number" }, { key: "earned", label: "Earnings", type: "number" }, { key: "status", label: "Status", type: "select", options: ["Active", "Review", "Suspended"] }] },
+  "Teams & referrals": { type: "teams", title: "Teams & referral network", description: "Maintain team ownership, recruitment relationships, and performance.", action: "Create team", columns: ["name", "lead", "members", "sales", "status"], fields: [{ key: "name", label: "Team name" }, { key: "lead", label: "Team lead" }, { key: "members", label: "Members", type: "number" }, { key: "sales", label: "Sales", type: "number" }, { key: "status", label: "Status", type: "select", options: ["Active", "Paused"] }] },
+  "Product catalog": { type: "products", title: "Product catalog", description: "Manage approved products, categories, pricing, and campaign commission.", action: "Add product", columns: ["name", "category", "price", "commission", "status"], fields: [{ key: "name", label: "Product name" }, { key: "category", label: "Category" }, { key: "price", label: "Price", type: "number" }, { key: "commission", label: "Commission %", type: "number" }, { key: "status", label: "Status", type: "select", options: ["Active", "Draft", "Archived"] }] },
+  "Amazon tracking": { type: "tracking", title: "Amazon tracking IDs", description: "Assign tracking IDs to teams and monitor attributed performance.", action: "Add tracking ID", columns: ["name", "team", "clicks", "sales", "revenue", "status"], fields: [{ key: "name", label: "Tracking ID" }, { key: "team", label: "Assigned team" }, { key: "clicks", label: "Clicks", type: "number" }, { key: "sales", label: "Sales", type: "number" }, { key: "revenue", label: "Revenue", type: "number" }, { key: "status", label: "Status", type: "select", options: ["Active", "Paused"] }] },
+  Commissions: { type: "commissions", title: "Commission management", description: "Review sales, referral, team earnings, approvals, and payout readiness.", action: "Add commission", columns: ["name", "type", "amount", "period", "status"], fields: [{ key: "name", label: "Affiliate or team" }, { key: "type", label: "Commission type", type: "select", options: ["Sales commission", "Referral commission", "Team commission"] }, { key: "amount", label: "Amount", type: "number" }, { key: "period", label: "Period" }, { key: "status", label: "Status", type: "select", options: ["Pending", "Approved", "Paid"] }] },
+  Payments: { type: "payments", title: "Payments & transactions", description: "Track registration fees, UGC purchases, refunds, and payment history.", action: "Record transaction", columns: ["name", "customer", "amount", "date", "status"], fields: [{ key: "name", label: "Transaction" }, { key: "customer", label: "Customer" }, { key: "amount", label: "Amount", type: "number" }, { key: "date", label: "Date", type: "date" }, { key: "status", label: "Status", type: "select", options: ["Completed", "Pending", "Refunded", "Failed"] }] },
+  "Content & UGC": { type: "content", title: "Content & UGC library", description: "Monitor generated content, videos, usage, and content records.", action: "Add content record", columns: ["name", "owner", "format", "date", "status"], fields: [{ key: "name", label: "Content title" }, { key: "owner", label: "Owner" }, { key: "format", label: "Format", type: "select", options: ["Instagram", "TikTok", "Email", "Video"] }, { key: "date", label: "Date", type: "date" }, { key: "status", label: "Status", type: "select", options: ["Ready", "Processing", "Failed"] }] },
+  Reports: { type: "activities", title: "Reports & activity", description: "A complete audit trail of changes across the platform.", action: "Export report", columns: ["action", "detail", "actor", "createdAt"], fields: [], readOnly: true },
+  "My links": { type: "links", title: "Affiliate links", description: "Create product tracking links and monitor clicks and conversion.", action: "Create link", columns: ["name", "url", "clicks", "conversions", "status"], fields: [{ key: "name", label: "Product or campaign" }, { key: "url", label: "Tracking URL", type: "url" }, { key: "clicks", label: "Clicks", type: "number" }, { key: "conversions", label: "Conversions", type: "number" }, { key: "status", label: "Status", type: "select", options: ["Active", "Paused"] }] },
+  "UGC videos": { type: "videos", title: "UGC video studio", description: "Request, monitor, download, and reuse product videos.", action: "Request video", columns: ["name", "product", "created", "status"], fields: [{ key: "name", label: "Video title" }, { key: "product", label: "Product" }, { key: "created", label: "Request date", type: "date" }, { key: "status", label: "Status", type: "select", options: ["Requested", "Processing", "Completed", "Failed"] }] },
+  "My team": { type: "referrals", title: "My referral team", description: "Invite members and monitor your personal referral relationships.", action: "Invite member", columns: ["name", "email", "relationship", "joined", "status"], fields: [{ key: "name", label: "Member name" }, { key: "email", label: "Email", type: "email" }, { key: "relationship", label: "Relationship", type: "select", options: ["Direct referral", "Team member"] }, { key: "joined", label: "Invite date", type: "date" }, { key: "status", label: "Status", type: "select", options: ["Invited", "Active"] }] },
+  "Earnings & payouts": { type: "payouts", title: "Earnings & payouts", description: "Review pending, approved, and completed payout records.", action: "Request payout", columns: ["name", "amount", "method", "date", "status"], fields: [{ key: "name", label: "Payee" }, { key: "amount", label: "Amount", type: "number" }, { key: "method", label: "Payout method" }, { key: "date", label: "Payout date", type: "date" }, { key: "status", label: "Status", type: "select", options: ["Pending", "Approved", "Paid"] }] },
+};
+
+function initials(name: string) {
+  return name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+}
+
+function formatValue(key: string, value: unknown) {
+  if (value === undefined || value === null || value === "") return "—";
+  if (["sales", "earned", "price", "amount", "revenue"].includes(key) && typeof value === "number") return `$${value.toLocaleString(undefined, { minimumFractionDigits: key === "price" || key === "amount" ? 2 : 0 })}`;
+  if (key === "commission") return `${value}%`;
+  if (key === "createdAt") return new Date(String(value)).toLocaleString();
+  return String(value);
+}
+
+function downloadCsv(filename: string, rows: EntityRecord[], columns: string[]) {
+  const escape = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+  const csv = [columns.map(escape).join(","), ...rows.map((row) => columns.map((column) => escape(row[column])).join(","))].join("\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function AuthScreen() {
+  const [mode, setMode] = useState<"login" | "signup" | "reset">("login");
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLoading(true);
+    setMessage("");
+    const values = new FormData(event.currentTarget);
+    const email = String(values.get("email") || "");
+    const password = String(values.get("password") || "");
+    try {
+      if (mode === "reset") {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+        if (error) throw error;
+        setMessage("Password reset instructions were sent to your email.");
+      } else if (mode === "signup") {
+        const { error, data } = await supabase.auth.signUp({ email, password, options: { data: { name: String(values.get("name") || "") } } });
+        if (error) throw error;
+        setMessage(data.session ? "Account created. Loading your workspace…" : "Check your email to confirm your account, then sign in.");
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Authentication failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return <div className="auth-screen"><div className="auth-brand"><Logo /><div><span className="eyebrow">EVELLC PARTNER NETWORK</span><h1>Build influence.<br/>Grow together.</h1><p>One secure workspace for products, content, referrals, commissions, and team growth.</p><div className="auth-proof"><span><Icon name="check"/></span><div><strong>Global partner ecosystem</strong><small>Commerce tools across every EveLLC marketplace.</small></div></div></div></div><form className="auth-card" onSubmit={submit}><span className="eyebrow">{mode === "signup" ? "JOIN THE NETWORK" : mode === "reset" ? "ACCOUNT RECOVERY" : "WELCOME BACK"}</span><h2>{mode === "signup" ? "Create your account" : mode === "reset" ? "Reset your password" : "Sign in to Partner Hub"}</h2><p>{mode === "signup" ? "The first registered account becomes platform owner." : "Use your verified EveLLC partner credentials."}</p>{mode === "signup" && <label>Full name<input name="name" required autoComplete="name"/></label>}<label>Email address<input name="email" type="email" required autoComplete="email"/></label>{mode !== "reset" && <label>Password<input name="password" type="password" minLength={8} required autoComplete={mode === "signup" ? "new-password" : "current-password"}/></label>}{message && <div className="auth-message">{message}</div>}<Button type="submit">{loading ? "Please wait…" : mode === "signup" ? "Create account" : mode === "reset" ? "Send reset link" : "Sign in"}</Button><div className="auth-links">{mode === "login" && <button type="button" onClick={() => setMode("reset")}>Forgot password?</button>}<button type="button" onClick={() => setMode(mode === "signup" ? "login" : "signup")}>{mode === "signup" ? "Already registered? Sign in" : "New partner? Create account"}</button></div></form></div>;
+}
+
+function RecordModal({ config, record, onClose, onSave }: { config: PageConfig; record: EntityRecord | null; onClose: () => void; onSave: (values: Record<string, unknown>) => Promise<void> }) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    const values: Record<string, unknown> = {};
+    new FormData(event.currentTarget).forEach((value, key) => {
+      const field = config.fields.find((item) => item.key === key);
+      values[key] = field?.type === "number" ? Number(value) : String(value);
+    });
+    try { await onSave(values); } catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to save"); setSaving(false); }
+  }
+  return <div className="modal-backdrop" role="presentation" onMouseDown={onClose}><div className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" onMouseDown={(event) => event.stopPropagation()}><div className="modal-header"><div><span className="eyebrow">{record ? "EDIT RECORD" : "NEW RECORD"}</span><h2 id="modal-title">{record ? `Edit ${record.name}` : config.action}</h2></div><button className="icon-button" onClick={onClose}><Icon name="close"/></button></div><form onSubmit={submit}><div className="modal-fields">{config.fields.map((field) => <label key={field.key}>{field.label}{field.type === "select" ? <select name={field.key} defaultValue={String(record?.[field.key] ?? field.options?.[0] ?? "")}>{field.options?.map((option) => <option key={option}>{option}</option>)}</select> : <input name={field.key} type={field.type || "text"} step={field.type === "number" ? "0.01" : undefined} defaultValue={String(record?.[field.key] ?? "")} required={["name", "email", "url"].includes(field.key)}/>}</label>)}</div>{error && <div className="auth-message">{error}</div>}<div className="modal-actions"><Button variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit">{saving ? "Saving…" : "Save record"}</Button></div></form></div></div>;
+}
+
+function FunctionalDataPage({ page, data, role, onRefresh, onToast }: { page: string; data: AppData; role: "admin" | "affiliate"; onRefresh: () => Promise<void>; onToast: (message: string) => void }) {
+  const config = pageConfigs[page];
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("All");
+  const [sort, setSort] = useState("Newest");
+  const [editing, setEditing] = useState<EntityRecord | null | undefined>(undefined);
+  const rows = data[config.type] || [];
+  const statuses = ["All", ...Array.from(new Set(rows.map((row) => String(row.status || "")).filter(Boolean)))];
+  const filtered = rows.filter((row) => Object.values(row).some((value) => String(value ?? "").toLowerCase().includes(query.toLowerCase())) && (status === "All" || row.status === status)).sort((a, b) => sort === "A–Z" ? a.name.localeCompare(b.name) : String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")));
+  const canManage = !config.readOnly && (role === "admin" || !["affiliates", "teams", "products", "tracking", "commissions", "payments"].includes(config.type));
+  const canPromote = role === "affiliate" && config.type === "products";
+
+  async function save(values: Record<string, unknown>) {
+    if (editing) await appApi.update(config.type, editing.id, values);
+    else await appApi.create(config.type, values);
+    setEditing(undefined);
+    await onRefresh();
+    onToast(editing ? "Record updated successfully" : "Record created successfully");
+  }
+
+  async function remove(record: EntityRecord) {
+    if (!window.confirm(`Delete “${record.name}”? This action cannot be undone.`)) return;
+    await appApi.remove(config.type, record.id);
+    await onRefresh();
+    onToast("Record deleted");
+  }
+
+  async function promote(record: EntityRecord) {
+    const slug = record.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    await appApi.create("links", { name: record.name, url: `https://evellc.shop/products/${slug}?ref=${crypto.randomUUID().slice(0, 8)}`, clicks: 0, conversions: 0, status: "Active" });
+    await onRefresh();
+    onToast("Product added to your promotional links");
+  }
+
+  return <><div className="section-title-row"><div><h2>{config.title}</h2><p>{config.description}</p></div><div className="section-actions"><Button variant="secondary" icon="download" onClick={() => { downloadCsv(`${config.type}.csv`, filtered, config.columns); onToast("CSV exported"); }}>Export</Button>{canManage && <Button icon="plus" onClick={() => setEditing(null)}>{config.action}</Button>}</div></div><div className="section-stats"><div><span>Total records</span><strong>{rows.length.toLocaleString()}</strong><small>Synced with Supabase</small></div><div><span>Active / completed</span><strong>{rows.filter((row) => ["Active", "Completed", "Ready", "Approved", "Paid"].includes(String(row.status))).length}</strong><small>Current live records</small></div><div><span>Needs attention</span><strong>{rows.filter((row) => ["Pending", "Review", "Processing", "Failed"].includes(String(row.status))).length}</strong><small>Review recommended</small></div></div><article className="panel table-panel"><div className="table-toolbar"><div className="search small"><Icon name="search" size={16}/><input aria-label="Search records" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${config.title.toLowerCase()}...`}/></div><div className="filters"><select aria-label="Filter status" value={status} onChange={(event) => setStatus(event.target.value)}>{statuses.map((item) => <option key={item}>{item}</option>)}</select><select aria-label="Sort records" value={sort} onChange={(event) => setSort(event.target.value)}><option>Newest</option><option>A–Z</option></select></div></div><div className="table-scroll"><table><thead><tr>{config.columns.map((column) => <th key={column}>{column.replace(/([A-Z])/g, " $1")}</th>)}{(canManage || canPromote) && <th>Actions</th>}</tr></thead><tbody>{filtered.map((row) => <tr key={row.id}>{config.columns.map((column, index) => <td key={column}>{index === 0 ? <div className="person"><span className="avatar purple">{initials(formatValue(column, row[column]))}</span><strong>{formatValue(column, row[column])}</strong></div> : column === "status" ? <span className={`status ${String(row[column]).toLowerCase()}`}>{formatValue(column, row[column])}</span> : formatValue(column, row[column])}</td>)}{canManage && <td><div className="row-actions"><button onClick={() => setEditing(row)}>Edit</button><button className="danger-action" onClick={() => remove(row)}>Delete</button></div></td>}{canPromote && <td><div className="row-actions"><button onClick={() => promote(row)}>Promote</button></div></td>}</tr>)}{filtered.length === 0 && <tr><td colSpan={config.columns.length + 1}><div className="empty-row">No matching records found.</div></td></tr>}</tbody></table></div></article>{editing !== undefined && <RecordModal config={config} record={editing} onClose={() => setEditing(undefined)} onSave={save}/>}</>;
+}
+
+function SettingsPage({ profile, onProfile, onToast }: { profile: AppProfile; onProfile: (profile: AppProfile) => void; onToast: (message: string) => void }) {
+  const [saving, setSaving] = useState(false);
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    const values = new FormData(event.currentTarget);
+    try {
+      const response = await appApi.updateProfile({ name: values.get("name"), payoutMethod: values.get("payoutMethod"), notifications: values.get("notifications") === "on" });
+      onProfile(response.profile);
+      onToast("Settings saved");
+    } finally { setSaving(false); }
+  }
+  return <><div className="section-title-row"><div><h2>Profile & settings</h2><p>Manage personal details, payout preferences, security, and integrations.</p></div></div><div className="settings-grid"><form className="panel settings-form" onSubmit={submit}><h3>Account information</h3><label>Full name<input name="name" defaultValue={profile.name} required/></label><label>Email address<input value={profile.email} disabled/></label><label>Payout method<select name="payoutMethod" defaultValue={profile.payoutMethod || "Bank transfer"}><option>Bank transfer</option><option>PayPal</option><option>Wise</option></select></label><label className="check-label"><input name="notifications" type="checkbox" defaultChecked={profile.notifications !== false}/>Email notifications for sales and payouts</label><Button type="submit">{saving ? "Saving…" : "Save changes"}</Button></form><div className="settings-stack"><article className="panel integration-card"><span className="list-icon"><Icon name="sparkles"/></span><div><h3>TryHolo.ai</h3><p>API key required before live content or video generation can run.</p></div><span className="status review">Setup required</span></article><article className="panel integration-card"><span className="list-icon list-1"><Icon name="card"/></span><div><h3>Payment provider</h3><p>Connect Stripe to collect registration and UGC generation fees.</p></div><span className="status review">Setup required</span></article><article className="panel integration-card"><span className="list-icon list-2"><Icon name="link"/></span><div><h3>Amazon Associates</h3><p>Credentials are required for live tracking and sales attribution.</p></div><span className="status review">Setup required</span></article></div></div></>;
+}
+
+function LoadingScreen({ error, onRetry }: { error?: string; onRetry?: () => void }) {
+  return <div className="loading-screen"><Logo/><span className={error ? "loading-error" : "loading-ring"}>{error && <Icon name="close"/>}</span><h2>{error ? "Workspace connection failed" : "Preparing your workspace"}</h2><p>{error || "Securely loading your EveLLC data…"}</p>{error && onRetry && <Button onClick={onRetry}>Try again</Button>}</div>;
+}
+
 export default function App() {
-  const [role, setRole] = useState<"admin" | "affiliate">("admin");
+  const [sessionReady, setSessionReady] = useState(false);
+  const [authenticated, setAuthenticated] = useState(false);
+  const [profile, setProfile] = useState<AppProfile | null>(null);
+  const [data, setData] = useState<AppData>({ activities: [] } as AppData);
+  const [role, setRole] = useState<"admin" | "affiliate">("affiliate");
   const [page, setPage] = useState("Overview");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [toast, setToast] = useState("");
   const [profileOpen, setProfileOpen] = useState(false);
-  const nav = role === "admin" ? adminNav : affiliateNav;
-  const pageDescription = role === "admin" ? "Here’s what’s happening across EveLLC today." : "Welcome back, Maya. Your community is growing.";
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [globalQuery, setGlobalQuery] = useState("");
+  const [loadError, setLoadError] = useState("");
+
+  async function loadWorkspace() {
+    setLoadError("");
+    try {
+      const boot = await appApi.bootstrap();
+      const response = await appApi.data();
+      setProfile(response.profile || boot.profile);
+      setRole((response.profile || boot.profile).role);
+      setData(response.data);
+    } catch (error) {
+      setLoadError(error instanceof Error ? `${error.message}. Deploy the Supabase Edge Function from Make settings, then retry.` : "Unable to load the workspace.");
+    }
+  }
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: authData }) => {
+      setAuthenticated(Boolean(authData.session));
+      setSessionReady(true);
+      if (authData.session) loadWorkspace();
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setAuthenticated(Boolean(nextSession));
+      setSessionReady(true);
+      if (nextSession) window.setTimeout(loadWorkspace, 0);
+      else { setProfile(null); setData({ activities: [] } as AppData); }
+    });
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const shortcut = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        document.querySelector<HTMLInputElement>("#global-search")?.focus();
+      }
+    };
+    window.addEventListener("keydown", shortcut);
+    return () => window.removeEventListener("keydown", shortcut);
+  }, []);
 
   const showToast = (message: string) => {
     setToast(message);
     window.setTimeout(() => setToast(""), 2600);
   };
+  const navigate = (label: string) => { setPage(label); setSidebarOpen(false); setGlobalQuery(""); };
+  const nav = role === "admin" ? adminNav : affiliateNav;
+  const searchResults = useMemo(() => {
+    if (!globalQuery.trim()) return [];
+    const pageByType: Record<string, string> = { affiliates: "Affiliates", teams: "Teams & referrals", referrals: "My team", products: "Product catalog", tracking: "Amazon tracking", commissions: "Commissions", payments: "Payments", content: "Content & UGC", links: "My links", videos: "UGC videos", payouts: "Earnings & payouts" };
+    return Object.entries(data).flatMap(([type, rows]) => (rows || []).filter((row) => Object.values(row).some((value) => String(value ?? "").toLowerCase().includes(globalQuery.toLowerCase()))).slice(0, 3).map((row) => ({ type, page: pageByType[type] || "Reports", row }))).slice(0, 8);
+  }, [globalQuery, data, role]);
 
-  const navigate = (label: string) => {
-    setPage(label);
-    setSidebarOpen(false);
-  };
+  if (!sessionReady) return <LoadingScreen />;
+  if (!authenticated) return <AuthScreen />;
+  if (loadError) return <LoadingScreen error={loadError} onRetry={loadWorkspace}/>;
+  if (!profile) return <LoadingScreen />;
 
-  const content = useMemo(() => {
-    if (page === "Overview") return role === "admin" ? <AdminOverview /> : <AffiliateOverview onNavigate={navigate} />;
-    return <DataPage page={page} onToast={showToast} />;
-  }, [page, role]);
+  let content: React.ReactNode;
+  if (page === "Overview") content = role === "admin" ? <AdminOverview onNavigate={navigate} data={data} /> : <AffiliateOverview onNavigate={navigate} data={data}/>;
+  else if (page === "AI content studio") content = <ContentStudio onToast={showToast}/>;
+  else if (page === "Settings") content = <SettingsPage profile={profile} onProfile={setProfile} onToast={showToast}/>;
+  else content = <FunctionalDataPage page={page} data={data} role={profile.role} onRefresh={loadWorkspace} onToast={showToast}/>;
 
-  return (
-    <div className="app-shell">
-      <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
-        <div className="sidebar-top"><Logo /><button className="mobile-close" onClick={() => setSidebarOpen(false)}><Icon name="close"/></button></div>
-        <div className="role-switcher"><span>Viewing as</span><button onClick={() => { setRole(role === "admin" ? "affiliate" : "admin"); setPage("Overview"); }}><span className={`role-avatar ${role}`}>{role === "admin" ? "AO" : "MP"}</span><div><strong>{role === "admin" ? "Platform owner" : "Affiliate"}</strong><small>{role === "admin" ? "Admin workspace" : "Creator workspace"}</small></div><Icon name="arrowDown" size={14}/></button></div>
-        <nav>
-          <span className="nav-label">WORKSPACE</span>
-          {nav.map((item) => <button key={item.label} className={page === item.label ? "active" : ""} onClick={() => navigate(item.label)}><Icon name={item.icon}/><span>{item.label}</span>{item.label === "Payments" && <i className="nav-badge">8</i>}</button>)}
-          <span className="nav-label settings-label">ACCOUNT</span>
-          <button onClick={() => navigate("Settings")} className={page === "Settings" ? "active" : ""}><Icon name="settings"/><span>Settings</span></button>
-        </nav>
-        <div className="upgrade-card"><span><Icon name="sparkles" size={17}/></span><strong>TryHolo.ai connected</strong><p>All systems are operating normally.</p><button onClick={() => showToast("Integration settings opened")}>Manage integration</button></div>
-        <div className="sidebar-help"><span>Need help?</span><button onClick={() => showToast("Support center opened")}>Visit support center <Icon name="chevron" size={14}/></button></div>
-      </aside>
-      {sidebarOpen && <button className="backdrop" aria-label="Close navigation" onClick={() => setSidebarOpen(false)} />}
-      <main>
-        <header>
-          <button className="menu-button" aria-label="Open navigation" onClick={() => setSidebarOpen(true)}><Icon name="menu"/></button>
-          <div className="search"><Icon name="search" size={17}/><input aria-label="Search" placeholder="Search affiliates, products, teams..." /><kbd>⌘ K</kbd></div>
-          <div className="header-actions">
-            <button className="icon-button notification" aria-label="Notifications" onClick={() => showToast("You have 3 new notifications")}><Icon name="bell"/><i></i></button>
-            <div className="profile-wrap"><button className="profile" onClick={() => setProfileOpen(!profileOpen)}><span>{role === "admin" ? "AO" : "MP"}</span><div><strong>{role === "admin" ? "Avery Owens" : "Maya Patel"}</strong><small>{role === "admin" ? "Platform owner" : "@mayacreates"}</small></div><Icon name="arrowDown" size={14}/></button>{profileOpen && <div className="profile-menu"><button onClick={() => showToast("Profile opened")}>View profile</button><button onClick={() => navigate("Settings")}>Account settings</button><button onClick={() => showToast("Signed out safely")}>Sign out</button></div>}</div>
-          </div>
-        </header>
-        <div className="page-content">
-          <div className="page-title"><div><p>{role === "admin" ? "ADMIN WORKSPACE" : "AFFILIATE WORKSPACE"}</p><h1>{page === "Overview" ? "Good morning, " + (role === "admin" ? "Avery" : "Maya") : page}</h1><span>{page === "Overview" ? pageDescription : "Manage and monitor your " + page.toLowerCase() + "."}</span></div>{page === "Overview" && <div className="date-pill">Nov 1 – Nov 30, 2025 <Icon name="arrowDown" size={14}/></div>}</div>
-          {content}
-        </div>
-      </main>
-      {toast && <div className="toast"><span><Icon name="check" size={15}/></span>{toast}</div>}
-    </div>
-  );
+  return <div className="app-shell"><aside className={`sidebar ${sidebarOpen ? "open" : ""}`}><div className="sidebar-top"><Logo/><button className="mobile-close" onClick={() => setSidebarOpen(false)}><Icon name="close"/></button></div><div className="role-switcher"><span>Viewing as</span><button disabled={profile.role !== "admin"} onClick={() => { if (profile.role === "admin") { setRole(role === "admin" ? "affiliate" : "admin"); setPage("Overview"); } }}><span className={`role-avatar ${role}`}>{initials(role === "admin" ? profile.name : "Affiliate Preview")}</span><div><strong>{role === "admin" ? "Platform owner" : profile.role === "admin" ? "Affiliate preview" : "Affiliate"}</strong><small>{profile.role === "admin" ? "Switch workspace" : "Creator workspace"}</small></div>{profile.role === "admin" && <Icon name="arrowDown" size={14}/>}</button></div><nav><span className="nav-label">WORKSPACE</span>{nav.map((item) => <button key={item.label} className={page === item.label ? "active" : ""} onClick={() => navigate(item.label)}><Icon name={item.icon}/><span>{item.label}</span>{item.label === "Payments" && data.payments?.filter((item) => item.status === "Pending").length > 0 && <i className="nav-badge">{data.payments.filter((item) => item.status === "Pending").length}</i>}</button>)}<span className="nav-label settings-label">ACCOUNT</span><button onClick={() => navigate("Settings")} className={page === "Settings" ? "active" : ""}><Icon name="settings"/><span>Settings</span></button></nav><div className="upgrade-card"><span><Icon name="sparkles" size={17}/></span><strong>TryHolo.ai setup required</strong><p>Add a secure API secret before enabling generation.</p><button onClick={() => navigate("Settings")}>Manage integrations</button></div><div className="sidebar-help"><span>Need help?</span><button onClick={() => window.location.href = "mailto:support@evellc.shop?subject=Partner Hub Support"}>Email support <Icon name="chevron" size={14}/></button></div></aside>{sidebarOpen && <button className="backdrop" aria-label="Close navigation" onClick={() => setSidebarOpen(false)}/>}<main><header><button className="menu-button" aria-label="Open navigation" onClick={() => setSidebarOpen(true)}><Icon name="menu"/></button><div className="global-search-wrap"><div className="search"><Icon name="search" size={17}/><input id="global-search" aria-label="Search all records" value={globalQuery} onChange={(event) => setGlobalQuery(event.target.value)} placeholder="Search affiliates, products, teams..."/><kbd>⌘ K</kbd></div>{globalQuery && <div className="search-results">{searchResults.length ? searchResults.map(({ type, page: resultPage, row }) => <button key={`${type}-${row.id}`} onClick={() => navigate(resultPage)}><span className="list-icon"><Icon name="search" size={15}/></span><div><strong>{row.name || row.action}</strong><small>{resultPage} · {row.status || row.detail}</small></div><Icon name="chevron" size={14}/></button>) : <div className="empty-row">No results found.</div>}</div>}</div><div className="header-actions"><div className="profile-wrap"><button className="icon-button notification" aria-label="Notifications" onClick={() => setNotificationsOpen(!notificationsOpen)}><Icon name="bell"/>{data.activities?.length > 0 && <i/>}</button>{notificationsOpen && <div className="notification-menu"><strong>Recent activity</strong>{data.activities?.slice(0, 4).map((item) => <button key={item.id} onClick={() => navigate("Reports")}><span>{item.action}</span><small>{item.detail}</small></button>)}</div>}</div><div className="profile-wrap"><button className="profile" onClick={() => setProfileOpen(!profileOpen)}><span>{initials(profile.name)}</span><div><strong>{profile.name}</strong><small>{profile.role === "admin" ? "Platform owner" : "Affiliate"}</small></div><Icon name="arrowDown" size={14}/></button>{profileOpen && <div className="profile-menu"><button onClick={() => { navigate("Settings"); setProfileOpen(false); }}>View profile</button><button onClick={() => { navigate("Settings"); setProfileOpen(false); }}>Account settings</button><button onClick={async () => { await supabase.auth.signOut(); setProfileOpen(false); }}>Sign out</button></div>}</div></div></header><div className="page-content"><div className="page-title"><div><p>{role === "admin" ? "ADMIN WORKSPACE" : "AFFILIATE WORKSPACE"}</p><h1>{page === "Overview" ? `Good morning, ${profile.name.split(" ")[0]}` : page}</h1><span>{page === "Overview" ? role === "admin" ? "Here’s what’s happening across EveLLC today." : "Your community and earnings at a glance." : pageConfigs[page]?.description || "Manage your account and workspace."}</span></div>{page === "Overview" && <div className="date-pill">{new Date().toLocaleDateString(undefined, { month: "long", year: "numeric" })}<Icon name="check" size={14}/></div>}</div>{content}</div></main>{toast && <div className="toast"><span><Icon name="check" size={15}/></span>{toast}</div>}</div>;
 }
